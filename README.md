@@ -55,37 +55,116 @@ lead-capture-platform/
 │   ├── widget_contract.md
 │   ├── submission_flow.md
 │   ├── security_spec.md
-│   └── event_spec.md
-├── app/                  # Application code (planned)
-├── tests/                # Automated tests (planned)
-├── migrations/           # Database migrations (planned)
-├── docker-compose.yml     # Local services (planned)
-├── Dockerfile             # Application image (planned)
-├── .env.example           # Example configuration (planned)
-└── pyproject.toml         # Python project configuration (planned)
+│   ├── event_spec.md
+│   └── decisions/            # Architecture decision records
+├── app/                      # Application code
+├── tests/                    # Automated tests
+├── migrations/               # Database migrations
+├── scripts/                  # Utility scripts (seed, worker)
+├── docker-compose.yml        # Local services
+├── Dockerfile                # Application image
+├── .env.example              # Example configuration
+└── pyproject.toml            # Python project configuration
 ```
 
 ## Getting Started
 
-Setup instructions will be added once the application scaffold and local development workflow are implemented.
-
 ### Prerequisites
 
-To be confirmed based on the initial setup. The intended tools include Python, Docker, and PostgreSQL.
+- Python 3.11+
+- Docker and Docker Compose (for PostgreSQL)
+- Git
 
 ### Installation
 
-_To be added._
+```bash
+# Clone the repository
+git clone <repository-url>
+cd lead-capture-platform
+
+# Create virtual environment and install dependencies
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+
+# Copy environment template
+cp .env.example .env
+# Edit .env with your settings (at minimum DATABASE_URL and SECRET_KEY)
+```
 
 ### Configuration
 
-Configuration will be managed through environment variables or the project's settings system. An `.env.example` file should document required variable names without containing real credentials.
+Configuration is managed through environment variables. Copy `.env.example` to `.env` and adjust:
 
-_To be added after configuration is implemented._
+```bash
+cp .env.example .env
+```
 
-### Run Locally
+Required variables:
+- `DATABASE_URL` — PostgreSQL connection string (e.g., `postgresql+asyncpg://postgres:postgres@localhost:5432/leadcapture`)
+- `SECRET_KEY` — JWT signing secret (generate with `openssl rand -hex 32`)
+- `JWT_ALGORITHM` — Default `HS256`
+- `JWT_EXPIRE_MINUTES` — Default `30`
 
-_To be added after the application entry point and development commands are established._
+See `.env.example` for all available options.
+
+### Run Locally (Development)
+
+**Option 1: With Docker Compose (recommended — includes PostgreSQL)**
+
+```bash
+# Start PostgreSQL
+docker compose up -d
+
+# Run database migrations
+alembic upgrade head
+
+# Seed demo data (optional)
+python scripts/seed.py
+
+# Start the API server
+uvicorn app.main:app --reload --port 8000
+```
+
+**Option 2: Without Docker (if you have PostgreSQL running locally)**
+
+```bash
+# Ensure PostgreSQL is running and DATABASE_URL in .env points to it
+alembic upgrade head
+python scripts/seed.py
+uvicorn app.main:app --reload --port 8000
+```
+
+The API will be available at `http://localhost:8000`
+- API docs: `http://localhost:8000/docs`
+- Health check: `http://localhost:8000/api/v1/health/live`
+
+### Run Tests
+
+```bash
+# Unit tests (no database required)
+python -m pytest tests/ -v
+
+# Integration tests (requires running PostgreSQL)
+docker compose up -d
+alembic upgrade head
+python -m pytest tests/ -v
+```
+
+### Demo Widget
+
+Start a simple HTTP server for the demo page on a different port to test cross-origin behavior:
+
+```bash
+# Terminal 1: API server
+uvicorn app.main:app --reload --port 8000
+
+# Terminal 2: Demo page (different origin)
+cd demo
+python -m http.server 3000
+```
+
+Open `http://localhost:3000` in your browser to test the widget.
 
 ## Development Workflow
 
@@ -111,12 +190,34 @@ The `docs/` directory contains the evolving technical design for the project.
 | `submission_flow.md` | Lead submission lifecycle and failure handling |
 | `security_spec.md` | Security boundaries and expected controls |
 | `event_spec.md` | Background job payloads, retries, and recovery behavior |
+| `decisions/` | Architecture decision records (ADRs) |
 
 Documentation may describe proposed behavior until the corresponding implementation is completed. Keep it synchronized with the actual code.
 
 ## Testing
 
-_Test commands and coverage expectations will be added after the test setup is implemented._
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run with coverage
+python -m pytest tests/ --cov=app --cov-report=term-missing
+
+# Run only unit tests (fast, no DB)
+python -m pytest tests/ -k "not integration" -v
+
+# Run integration tests (requires DB)
+python -m pytest tests/ -k "integration" -v
+```
+
+Code quality checks:
+```bash
+# Linting
+ruff check .
+
+# Type checking
+mypy app/
+```
 
 ## Configuration and Secrets
 
@@ -129,13 +230,13 @@ _Test commands and coverage expectations will be added after the test setup is i
 
 The implementation roadmap will be maintained as the project evolves.
 
-- [ ] Initialize the application and development environment
-- [ ] Implement the first API slice
-- [ ] Add database persistence and migrations
-- [ ] Implement widget management and public submission
-- [ ] Add validation, security, and reliability controls
-- [ ] Add asynchronous processing and integrations
-- [ ] Add analytics, deployment, and operational checks
+- [x] Initialize the application and development environment (Phase 0)
+- [x] Design decisions and documentation alignment (Phase 1)
+- [ ] Add database persistence and migrations (Phase 2)
+- [ ] Implement widget management and public submission (Phases 3-5)
+- [ ] Add validation, security, and reliability controls (Phases 3-6)
+- [ ] Add asynchronous processing and integrations (Phase 6)
+- [ ] Add analytics, deployment, and operational checks (Phases 7-8)
 
 Reorder or refine these items as implementation priorities become clearer.
 
