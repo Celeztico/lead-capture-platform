@@ -28,7 +28,7 @@ async def seed() -> None:
         demo_workspace = Workspace(
             id=uuid4(),
             name="Demo Workspace",
-            status=WorkspaceStatus.ACTIVE,
+            status=WorkspaceStatus.ACTIVE.value,
         )
         session.add(demo_workspace)
 
@@ -36,7 +36,7 @@ async def seed() -> None:
         membership = WorkspaceMembership(
             workspace_id=demo_workspace.id,
             user_id=demo_user.id,
-            role=MembershipRole.OWNER,
+            role=MembershipRole.OWNER.value,
         )
         session.add(membership)
 
@@ -46,7 +46,7 @@ async def seed() -> None:
             public_id=uuid4(),
             workspace_id=demo_workspace.id,
             name="Contact Form",
-            status=WidgetStatus.ACTIVE,
+            status=WidgetStatus.ACTIVE.value,
             configuration={
                 "title": "Contact Us",
                 "description": "Send us a message and we'll get back to you.",
