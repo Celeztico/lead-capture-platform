@@ -120,7 +120,9 @@ class MembershipRepository:
 
     async def list_for_user(self, user_id: UUID) -> Sequence[WorkspaceMembership]:
         result = await self.session.execute(
-            select(WorkspaceMembership).where(WorkspaceMembership.user_id == user_id)
+            select(WorkspaceMembership)
+            .where(WorkspaceMembership.user_id == user_id)
+            .order_by(desc(WorkspaceMembership.created_at))
         )
         return result.scalars().all()
 

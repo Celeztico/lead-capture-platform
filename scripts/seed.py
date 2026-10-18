@@ -1,6 +1,8 @@
 import asyncio
 from uuid import uuid4
 
+from sqlalchemy import select
+
 from app.core.database import async_session_maker
 from app.models import (
     MembershipRole,
@@ -15,6 +17,11 @@ from app.models import (
 
 async def seed() -> None:
     async with async_session_maker() as session:
+        existing = await session.scalar(select(User).where(User.email == "demo@example.com"))
+        if existing is not None:
+            print("Seed data already present, skipping.")  # noqa: T201
+            return
+
         # Create demo user
         demo_user = User(
             id=uuid4(),

@@ -321,11 +321,17 @@ class TestCrossTenantIsolation:
 
         # Create widgets in each workspace
         widget_service = WidgetService(db_session)
+        valid_config = {
+            "title": "Cross Tenant Form",
+            "submit_label": "Submit",
+            "success_message": "Thanks!",
+            "fields": [{"name": "email", "type": "email", "label": "Email", "required": True}],
+        }
         await widget_service.create_widget(
-            workspace_id=workspace1.id, name="Widget 1", configuration={}
+            workspace_id=workspace1.id, name="Widget 1", configuration=valid_config
         )
         await widget_service.create_widget(
-            workspace_id=workspace2.id, name="Widget 2", configuration={}
+            workspace_id=workspace2.id, name="Widget 2", configuration=valid_config
         )
         await db_session.commit()
 
@@ -374,7 +380,14 @@ class TestCrossTenantIsolation:
 
         widget_service = WidgetService(db_session)
         widget2 = await widget_service.create_widget(
-            workspace_id=workspace2.id, name="Widget 2", configuration={}
+            workspace_id=workspace2.id,
+            name="Widget 2",
+            configuration={
+                "title": "Cross Tenant Form",
+                "submit_label": "Submit",
+                "success_message": "Thanks!",
+                "fields": [{"name": "email", "type": "email", "label": "Email", "required": True}],
+            },
         )
         await db_session.commit()
 

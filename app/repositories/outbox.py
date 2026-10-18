@@ -1,8 +1,9 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import CursorResult, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import JobStatus, OutboxEvent
@@ -119,4 +120,4 @@ class OutboxRepository:
             )
         )
         await self.session.flush()
-        return result.rowcount
+        return cast(CursorResult[Any], result).rowcount

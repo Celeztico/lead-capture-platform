@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
@@ -40,8 +41,8 @@ class WidgetResponse(BaseModel):
     status: str
     configuration: WidgetConfiguration
     config_version: int
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
     class Config:
         from_attributes = True

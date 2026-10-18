@@ -15,6 +15,9 @@ async_session_maker = async_sessionmaker(engine, class_=AsyncSession, expire_on_
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_maker() as session:
         yield session
+        # Commit successful requests; exceptions propagate past the yield and
+        # leave the session to roll back on close.
+        await session.commit()
 
 
 async def init_db() -> None:
