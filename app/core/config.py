@@ -39,6 +39,8 @@ class Settings(BaseSettings):
 
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    create_tables_on_startup: bool = False
+
     @property
     def allowed_origins_list(self) -> list[str]:
         return [o.strip() for o in self.allowed_origins.split(",") if o.strip()]
