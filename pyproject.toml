@@ -21,6 +21,11 @@ dependencies = [
     "pytest-cov>=4.1.0,<5.0.0",
 ]
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+exclude = ["migrations*", "scripts*", "tests*", "docs*"]
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.1.0,<1.0.0",
