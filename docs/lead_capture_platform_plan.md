@@ -440,13 +440,17 @@ estimates, not deadlines.
 **Goal:** establish a clean, reviewable project before feature work.
 
 **Work** - Create a dedicated public repository, following the brief's
-naming convention, e.g. `flyrank-capstone-widget-platform`. - Add
-`README.md`, `.gitignore`, `.env.example`, `BUILDLOG.md`, `EVIDENCE.md`,
-and `capstone.yaml` as applicable to the brief. - Add a license and a
-minimal project skeleton. - Establish branch/commit conventions and keep
-`main` runnable. - Configure formatting/linting and a basic test
-command. - Confirm that environment files, database files, keys, tokens,
-and generated artifacts are ignored.
+naming convention, e.g. `flyrank-capstone-widget-platform`. - The initial
+project documentation currently prepared is `README.md`, `AGENTS.md`, and
+the eight technical documents listed in Section 12. - Add `.gitignore`,
+`.env.example`, and a minimal project skeleton when the repository setup
+reaches that stage. - Add `BUILDLOG.md`, `EVIDENCE.md`, and `capstone.yaml`
+only when preparing the corresponding internship submission evidence or
+when the brief requires them; they have not been created as part of the
+current documentation set. - Add a license when decided. - Establish
+branch/commit conventions and keep `main` runnable. - Configure
+formatting/linting and a basic test command. - Confirm that environment
+files, database files, keys, tokens, and generated artifacts are ignored.
 
 **Gate** - A clean clone can follow the documented setup. - No secret is
 committed. - The application starts and the test command runs, even if
@@ -476,10 +480,12 @@ cross-tenant access, public endpoint abuse, injection, oversized input,
 leaked secrets, forged webhooks, and accidental personal-data logging. -
 Document architecture decisions in `docs/decisions/` or `DECISIONS.md`.
 
-**Gate** - `docs/design.md` and `docs/architecture/data-model.md` exist
-and match the planned scope. - Every public endpoint has an owner,
-request schema, response schema, auth model, and error policy. - One
-explicit non-goal is documented.
+**Gate** - The existing `docs/architecture.md`, `docs/domain_models.md`,
+`docs/database_schema.md`, `docs/api_contracts.md`, `docs/widget_contract.md`,
+`docs/submission_flow.md`, `docs/security_spec.md`, and `docs/event_spec.md`
+are reviewed and kept consistent with the planned scope. - Every public
+endpoint has an owner, request schema, response schema, auth model, and
+error policy. - One explicit non-goal is documented.
 
 **Evidence** - Design docs committed; review checklist signed off in
 `EVIDENCE.md`.
@@ -1048,123 +1054,97 @@ the data.
 
 ------------------------------------------------------------------------
 
-## 12. Documentation system --- make future "truth docs" easy
+## 12. Documentation system --- current files and future additions
 
-The plan is the roadmap; it must not become the only source of truth.
-Keep these documents short, factual, and updated when implementation
-changes.
+Keep the documentation set small and useful. The files listed below are
+the documents prepared so far. They describe the proposed design and must
+be reconciled with implementation as the code evolves.
 
-### Suggested repository structure
+### Current repository documentation
 
-``` text
+```text
 .
+├── AGENTS.md
 ├── README.md
-├── PLAN.md
-├── BUILDLOG.md
-├── EVIDENCE.md
-├── capstone.yaml
-├── .env.example
-├── pyproject.toml
-├── docker-compose.yml
-├── alembic.ini
-├── migrations/
-├── app/
-│   ├── api/
-│   ├── core/
-│   ├── models/
-│   ├── repositories/
-│   ├── schemas/
-│   ├── services/
-│   ├── jobs/
-│   └── main.py
-├── widget/
-│   ├── src/
-│   └── dist/
-├── demo-site/
-├── tests/
-│   ├── unit/
-│   ├── integration/
-│   ├── security/
-│   └── e2e/
 └── docs/
-    ├── design.md
-    ├── architecture/
-    │   ├── overview.md
-    │   ├── data-model.md
-    │   ├── request-flows.md
-    │   └── deployment.md
-    ├── api/
-    │   └── conventions.md
-    ├── security/
-    │   ├── threat-model.md
-    │   └── privacy-and-retention.md
-    ├── operations/
-    │   ├── runbook.md
-    │   ├── backup-restore.md
-    │   └── incident-response.md
-    ├── decisions/
-    │   └── ADR-0001-modular-monolith.md
-    └── truth/
-        ├── system-map.md
-        ├── environment-variables.md
-        ├── background-jobs.md
-        ├── caching-and-rate-limits.md
-        └── known-limitations.md
+    ├── architecture.md
+    ├── domain_models.md
+    ├── database_schema.md
+    ├── api_contracts.md
+    ├── widget_contract.md
+    ├── submission_flow.md
+    ├── security_spec.md
+    └── event_spec.md
 ```
 
-Do not create every file as empty boilerplate on day one. Create each
-document when its phase makes it useful.
+This is the current documentation set, not a claim that the application
+folders, migrations, tests, Docker files, or configuration files already
+exist. Update the tree when those files are actually added.
 
-### What each document should answer
+### What each current document answers
 
--   **`README.md`:** What does this do? How do I run it? How do I
-    seed/test/demo it? What are the limitations?
--   **`PLAN.md`:** What are we trying to build, in what order, and what
-    is core versus future?
--   **`docs/design.md`:** Who has the problem, what is the scope, and
-    what is explicitly not being built?
--   **`docs/architecture/overview.md`:** What are the runtime components
-    and how do they connect?
--   **`docs/architecture/data-model.md`:** What data exists, who owns
-    it, what constraints/indexes apply, and what is retained/deleted?
--   **`docs/architecture/request-flows.md`:** What happens step by step
-    for owner CRUD, widget load, submission, and background processing?
--   **`docs/api/`:** What endpoints exist, who can call them, and what
-    are the request/response/error contracts?
--   **`docs/security/threat-model.md`:** What can go wrong, what
-    protects against it, and which risks remain?
--   **`docs/security/privacy-and-retention.md`:** What personal data is
-    collected, why, for how long, and how can it be exported/deleted?
--   **`docs/operations/runbook.md`:** What to check when a service,
-    provider, worker, or queue fails?
--   **`docs/operations/backup-restore.md`:** How are backups made and
-    how is restoration verified?
--   **`docs/decisions/ADR-*.md`:** Why was a significant technology or
-    design selected? What alternatives were considered?
--   **`docs/truth/system-map.md`:** What exists in code today, with
-    paths to the implementation and tests?
--   **`docs/truth/environment-variables.md`:** Which environment
-    variables exist, what they mean, whether they are secret, and where
-    they are used?
--   **`docs/truth/background-jobs.md`:** Which jobs exist, triggers,
-    retry policy, idempotency, and failure behavior?
--   **`docs/truth/caching-and-rate-limits.md`:** What is cached, TTLs,
-    cache invalidation, rate-limit keys, storage, and outage behavior?
--   **`docs/truth/known-limitations.md`:** What is incomplete, what is
-    unsafe for production, and what assumptions remain?
--   **`EVIDENCE.md`:** What concrete output proves each requirement?
--   **`BUILDLOG.md`:** What was tried, what AI helped with, what was
-    wrong, and what was changed?
+- **`AGENTS.md`:** How coding agents should inspect, plan, implement,
+  test, and report changes without making unrelated edits.
+- **`README.md`:** What the project aims to do, the intended stack, the
+  current documentation index, and the high-level roadmap. Setup and test
+  commands remain placeholders until implemented.
+- **`docs/architecture.md`:** What the planned system components are and
+  how owner management, widget delivery, submissions, and secondary work
+  fit together.
+- **`docs/domain_models.md`:** What the core entities are, how they
+  relate, and which business invariants apply.
+- **`docs/database_schema.md`:** The proposed database tables,
+  relationships, constraints, and indexes.
+- **`docs/api_contracts.md`:** The proposed API endpoints, authentication
+  expectations, request/response shapes, status codes, and errors.
+- **`docs/widget_contract.md`:** The embed snippet, public widget config,
+  browser behavior, CORS, caching, and submission protocol.
+- **`docs/submission_flow.md`:** The submission lifecycle, transaction
+  boundary, optional integrations, and failure behavior.
+- **`docs/security_spec.md`:** The trust boundaries, tenant isolation,
+  public endpoint abuse controls, privacy, and security test expectations.
+- **`docs/event_spec.md`:** The proposed background-job types, payloads,
+  retry rules, idempotency, ordering, failure visibility, and recovery.
 
-### Truth-document rule
+### Future documentation and submission artefacts
 
-A truth document describes **what the current code actually does**, not
-what the plan hopes it will do. Every major claim should link to code,
-configuration, tests, or a runbook. Update truth docs in the same pull
-request as behavior changes. If implementation and docs disagree, fix
-one before merging.
+Do not create extra documents just to fill out a directory tree. Add a
+document when it solves a concrete need or is explicitly required by the
+internship brief.
 
-------------------------------------------------------------------------
+Potential future files include:
+
+- **`.env.example`:** Add when configuration variables are established.
+- **`BUILDLOG.md`:** Add if required by the internship submission; record
+  development progress, decisions, corrections, and learning honestly.
+- **`EVIDENCE.md`:** Add when collecting test output and proof for each
+  acceptance requirement.
+- **`capstone.yaml`:** Add if required by the capstone submission format.
+- **`DECISIONS.md` or an ADR:** Add when a significant design choice needs
+  a durable rationale.
+- **Operational runbooks:** Add when deployment, background workers, or
+  external integrations need documented recovery procedures.
+
+These files are not part of the current set of documents already created.
+Some may still be required later by the internship brief; their future
+status should not be confused with their current existence.
+
+### Documentation rules
+
+1. Treat the technical documents as proposed contracts until code and
+   tests verify the behavior.
+2. Inspect the actual code before describing a feature as implemented.
+3. Update the relevant document in the same change as a behavior or
+   contract change.
+4. Keep examples, endpoint names, schema fields, and configuration aligned
+   with the implementation.
+5. Avoid duplicating the same detailed specification across multiple
+   documents; link to the primary document instead.
+6. If implementation and documentation disagree, identify the intended
+   behavior and correct the appropriate side before considering the work
+   complete.
+7. Keep `README.md` concise and practical; detailed technical contracts
+   belong in the relevant file under `docs/`.
 
 ## 13. Definition of done for every phase
 
