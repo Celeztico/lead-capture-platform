@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: leadcapture-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: leadcapture
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d leadcapture"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - leadcapture-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leadcapture-api
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/leadcapture
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 30
+      APP_ENV: development
+      DEBUG: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - leadcapture-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: leadcapture-worker
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/leadcapture
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: 30
+      APP_ENV: development
+      DEBUG: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - leadcapture-network
+    command: python scripts/worker.py
+
+volumes:
+  postgres_data:
+
+networks:
+  leadcapture-network:
+    driver: bridge
