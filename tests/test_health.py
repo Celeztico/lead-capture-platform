@@ -7,9 +7,9 @@ def test_liveness(client: TestClient):
     assert response.json() == {"status": "alive"}
 
 
-def test_readiness_no_db(client: TestClient):
+def test_readiness_with_db(client: TestClient):
     response = client.get("/api/v1/health/ready")
     assert response.status_code == 200
     data = response.json()
-    assert data["status"] == "not_ready"
-    assert data["database"] == "disconnected"
+    assert data["status"] == "ready"
+    assert data["database"] == "connected"

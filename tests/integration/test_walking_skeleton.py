@@ -10,14 +10,14 @@ from app.services.widget import WidgetService
 from app.services.workspace import WorkspaceService
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def app():
     app = create_app()
     await init_db()
     yield app
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 async def client(app):
     async with AsyncClient(app=app, base_url="http://test") as client:
         yield client

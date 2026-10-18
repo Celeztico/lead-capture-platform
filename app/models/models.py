@@ -51,6 +51,11 @@ class JobStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
+    """Persist enum member .value strings instead of member names."""
+    return [member.value for member in enum_cls]
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -61,7 +66,9 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     password_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[UserStatus] = mapped_column(
-        Enum(UserStatus, native_enum=False), default=UserStatus.ACTIVE.value, nullable=False
+        Enum(UserStatus, native_enum=False, values_callable=_enum_values),
+        default=UserStatus.ACTIVE.value,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
@@ -93,7 +100,9 @@ class Workspace(Base):
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[WorkspaceStatus] = mapped_column(
-        Enum(WorkspaceStatus, native_enum=False), default=WorkspaceStatus.ACTIVE.value, nullable=False
+        Enum(WorkspaceStatus, native_enum=False, values_callable=_enum_values),
+        default=WorkspaceStatus.ACTIVE.value,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
@@ -134,7 +143,9 @@ class WorkspaceMembership(Base):
         PG_UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
     )
     role: Mapped[MembershipRole] = mapped_column(
-        Enum(MembershipRole, native_enum=False), default=MembershipRole.MEMBER.value, nullable=False
+        Enum(MembershipRole, native_enum=False, values_callable=_enum_values),
+        default=MembershipRole.MEMBER.value,
+        nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
@@ -166,7 +177,9 @@ class Widget(Base):
     )
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     status: Mapped[WidgetStatus] = mapped_column(
-        Enum(WidgetStatus, native_enum=False), default=WidgetStatus.ACTIVE.value, nullable=False
+        Enum(WidgetStatus, native_enum=False, values_callable=_enum_values),
+        default=WidgetStatus.ACTIVE.value,
+        nullable=False,
     )
     configuration: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     config_version: Mapped[int] = mapped_column(default=1, nullable=False)
@@ -275,7 +288,9 @@ class OutboxEvent(Base):
     event_type: Mapped[str] = mapped_column(String(80), nullable=False)
     payload: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     status: Mapped[JobStatus] = mapped_column(
-        Enum(JobStatus, native_enum=False), default=JobStatus.PENDING.value, nullable=False
+        Enum(JobStatus, native_enum=False, values_callable=_enum_values),
+        default=JobStatus.PENDING.value,
+        nullable=False,
     )
     attempt_count: Mapped[int] = mapped_column(default=0, nullable=False)
     max_attempts: Mapped[int] = mapped_column(default=5, nullable=False)
