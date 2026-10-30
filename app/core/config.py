@@ -37,9 +37,26 @@ class Settings(BaseSettings):
 
     webhook_signing_secret: str = ""
 
+    # Public base URL for widget embed snippet generation
+    public_base_url: str = "http://localhost:8000"
+
+    # CORS origins for public widget endpoints (config and script delivery)
+    # Set explicitly for production; development allows "*" only when configured
+    allowed_widget_origins: str = ""
+
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     create_tables_on_startup: bool = False
+
+    @property
+    def public_base_url_normalized(self) -> str:
+        """Return PUBLIC_BASE_URL with trailing slash removed."""
+        return self.public_base_url.rstrip("/")
+
+    @property
+    def allowed_widget_origins_list(self) -> list[str]:
+        """Return parsed widget CORS origins."""
+        return [o.strip() for o in self.allowed_widget_origins.split(",") if o.strip()]
 
     @property
     def allowed_origins_list(self) -> list[str]:
