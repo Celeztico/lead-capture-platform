@@ -34,7 +34,6 @@ def create_app() -> FastAPI:
 
     # CORS for public widget endpoints only (config + script delivery)
     widget_origins = settings.allowed_widget_origins_list
-    allow_widget_star = "*" in widget_origins
 
     app.add_middleware(
         CORSMiddleware,

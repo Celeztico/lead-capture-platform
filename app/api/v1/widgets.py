@@ -7,8 +7,6 @@ from app.api.deps import get_current_workspace_id
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import WidgetStatus
-
-settings = get_settings()
 from app.schemas import (
     EmbedResponse,
     WidgetCreate,
@@ -17,6 +15,8 @@ from app.schemas import (
     WidgetUpdate,
 )
 from app.services.widget import WidgetService
+
+settings = get_settings()
 
 router = APIRouter(prefix="/api/v1/widgets", tags=["widgets"])
 
