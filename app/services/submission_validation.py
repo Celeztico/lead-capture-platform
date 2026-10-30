@@ -46,6 +46,7 @@ HONEYPOT_FIELD = "website_url"
 # Configuration limits
 MAX_FIELD_COUNT = 20
 MAX_FIELD_LENGTH = 2000
+MAX_BODY_BYTES = 1_000_000
 
 
 def validate_submission(
@@ -66,11 +67,14 @@ def validate_submission(
     # --- Honeypot check --------------------------------------------------
     # A hidden field that legitimate users never see/fill. Bots often fill
     # every field they encounter. If present and non-empty, reject.
-    honeypot_value = data.get(HONEYPOT_FIELD)
+    # The key is removed afterwards so an empty honeypot is accepted (the
+    # documented pattern) instead of tripping the unknown-field rule, and
+    # so the honeypot value is never persisted with the submission.
+    honeypot_value = data.pop(HONEYPOT_FIELD, None)
     if honeypot_value is not None and str(honeypot_value).strip() != "":
         raise SubmissionValidationError(
             code="SPAM_DETECTED",
-            message="Submission rejected by spam filter.",
+            message="Submission rejected.",
         )
 
     # --- Field count limit ----------------------------------------------
@@ -98,8 +102,14 @@ def validate_submission(
                 details=[{"field": name, "reason": "Unknown field."}],
             )
 
-        # Type/length validation
-        next(f for f in config.fields if f.name == name)
+        # Type validation: configured field types (text/email/textarea) are
+        # string-valued; numbers, booleans, arrays, and objects are rejected.
+        if value is not None and not isinstance(value, str):
+            raise SubmissionValidationError(
+                code="INVALID_FIELD_TYPE",
+                message=f"Field '{name}' must be a text value.",
+                details=[{"field": name, "reason": "Expected a string value."}],
+            )
 
         if isinstance(value, str) and len(value) > MAX_FIELD_LENGTH:
             raise SubmissionValidationError(
@@ -123,8 +133,18 @@ def validate_submission(
                 details=[{"field": name, "reason": "Required field is missing or empty."}],
             )
 
+    # --- Required fields absent from the payload -------------------------
+    missing_required = required_fields - data.keys()
+    if missing_required:
+        name = sorted(missing_required)[0]
+        raise SubmissionValidationError(
+            code="MISSING_REQUIRED_FIELD",
+            message=f"Required field '{name}' is missing or empty.",
+            details=[{"field": name, "reason": "Required field is missing or empty."}],
+        )
 
-def validate_body_size(body_bytes: bytes, max_bytes: int = 1_000_000) -> None:
+
+def validate_body_size(body_bytes: bytes, max_bytes: int = MAX_BODY_BYTES) -> None:
     """Validate request body size.
 
     Args:

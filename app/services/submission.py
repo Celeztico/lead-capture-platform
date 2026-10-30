@@ -69,11 +69,15 @@ class SubmissionService:
                 if submission:
                     return submission, "replay"
 
+            if status == IdempotencyResult.REPLAY and existing and not existing.submission_id:
+                # Key claimed but no submission linked yet: a concurrent
+                # request with the same key is mid-flight, or a previous
+                # attempt crashed before linking. Creating another
+                # submission here would break the idempotency contract.
+                raise ValueError("IDEMPOTENCY_IN_PROGRESS")
+
             if status == IdempotencyResult.CONFLICT:
                 raise ValueError("IDEMPOTENCY_CONFLICT")
-
-        # Validate data against widget configuration (basic validation)
-        # In reality, this would be more thorough
 
         # Create submission
         submission = await self.submission_repo.create(

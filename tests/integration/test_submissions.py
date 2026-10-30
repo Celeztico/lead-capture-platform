@@ -294,6 +294,7 @@ class TestRateLimiting:
         )
         assert response.status_code == 429
         assert "retry-after" in response.headers
+        assert int(response.headers["retry-after"]) >= 1
 
 
 class TestIdempotency:
@@ -446,3 +447,126 @@ class TestSubmissionPersistence:
         assert db_submission.data["email"] == "persist@example.com"
         assert db_submission.workspace_id == demo_widget.workspace_id
         assert db_submission.widget_id == demo_widget.id
+
+
+class TestSubmissionHardeningRegressions:
+    """Regression tests for issues found during Phase 5 validation."""
+
+    async def test_wrong_field_type_rejected(self, client, demo_widget):
+        """Non-string values for text/email fields are rejected (422)."""
+        payload = {"data": {"name": "John", "email": 12345}}
+        response = await client.post(
+            f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+            json=payload,
+        )
+        assert response.status_code == 422
+
+    async def test_wrong_field_type_object_rejected(self, client, demo_widget):
+        payload = {"data": {"name": {"nested": "object"}, "email": "a@b.co"}}
+        response = await client.post(
+            f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+            json=payload,
+        )
+        assert response.status_code == 422
+
+    async def test_idempotency_key_too_long_rejected(self, client, demo_widget):
+        """Oversized Idempotency-Key fails cleanly with 400, not a DB error."""
+        payload = {"data": {"name": "John", "email": "john@example.com"}}
+        response = await client.post(
+            f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+            json=payload,
+            headers={"Idempotency-Key": "k" * 256},
+        )
+        assert response.status_code == 400
+
+    async def test_empty_honeypot_not_persisted(
+        self, client, demo_widget, db_session
+    ):
+        """Empty honeypot is accepted and stripped from stored data."""
+        from sqlalchemy import select
+
+        from app.models import Submission
+
+        payload = {
+            "data": {
+                "name": "John Doe",
+                "email": "john@example.com",
+                "website_url": "",
+            }
+        }
+        response = await client.post(
+            f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+            json=payload,
+        )
+        assert response.status_code == 201
+        submission_id = response.json()["id"]
+        result = await db_session.execute(
+            select(Submission).where(Submission.id == submission_id)
+        )
+        submission = result.scalar_one()
+        assert "website_url" not in submission.data
+
+    async def test_idempotency_in_progress_returns_409(
+        self, client, demo_widget, db_session
+    ):
+        """A claimed key with no linked submission must not create a duplicate."""
+        import hashlib
+        import json as jsonlib
+        import uuid as uuidlib
+
+        from app.models import IdempotencyRecord
+
+        key = str(uuidlib.uuid4())
+        data = {"name": "In Flight", "email": "inflight@example.com"}
+        fingerprint = hashlib.sha256(
+            jsonlib.dumps(data, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        db_session.add(
+            IdempotencyRecord(
+                workspace_id=demo_widget.workspace_id,
+                widget_id=demo_widget.id,
+                idempotency_key=key,
+                request_fingerprint=fingerprint,
+                submission_id=None,
+            )
+        )
+        await db_session.commit()
+
+        response = await client.post(
+            f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+            json={"data": data},
+            headers={"Idempotency-Key": key},
+        )
+        assert response.status_code == 409
+
+    async def test_malformed_json_still_rate_limited(self, client, demo_widget):
+        """Rate limiting runs before body parsing; malformed floods are capped."""
+        statuses = []
+        for _ in range(11):
+            response = await client.post(
+                f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+                content=b"not json",
+                headers={"Content-Type": "application/json"},
+            )
+            statuses.append(response.status_code)
+        assert statuses[:10] == [400] * 10
+        assert statuses[10] == 429
+
+    async def test_per_widget_rate_limit_enforced(
+        self, client, demo_widget, monkeypatch
+    ):
+        """Widget-dimension limit triggers 429 independently of the IP limit."""
+        from app.api.v1 import public as public_module
+
+        monkeypatch.setattr(public_module.settings, "rate_limit_per_minute_ip", 100)
+        monkeypatch.setattr(public_module.settings, "rate_limit_per_minute_widget", 3)
+
+        statuses = []
+        for i in range(5):
+            response = await client.post(
+                f"/public/v1/widgets/{demo_widget.public_id}/submissions",
+                json={"data": {"name": f"U{i}", "email": f"u{i}@example.com"}},
+            )
+            statuses.append(response.status_code)
+        assert statuses == [201, 201, 201, 429, 429]
+        assert "retry-after" in response.headers

@@ -29,26 +29,29 @@ class IdempotencyRepository:
         """
         Try to claim an idempotency key.
         Returns: (status, record)
-        - (IdempotencyResult.NEW, None): key claimed, new record created
+        - (IdempotencyResult.NEW, record): key claimed by this call
         - (IdempotencyResult.REPLAY, record): key exists with same fingerprint
         - (IdempotencyResult.CONFLICT, record): key exists with different fingerprint
         """
-        # Try to insert new record
+        # Try to insert new record. RETURNING tells us whether this call
+        # actually created the claim: no row comes back when a concurrent
+        # request already inserted the same (widget_id, idempotency_key).
         stmt = pg_insert(IdempotencyRecord).values(
             workspace_id=workspace_id,
             widget_id=widget_id,
             idempotency_key=idempotency_key,
             request_fingerprint=request_fingerprint,
             expires_at=expires_at,
-        )
-        # On conflict, do nothing and return existing
-        stmt = stmt.on_conflict_do_nothing(
+        ).on_conflict_do_nothing(
             index_elements=["widget_id", "idempotency_key"]
-        )
-        await self.session.execute(stmt)
+        ).returning(IdempotencyRecord)
+        inserted = (await self.session.execute(stmt)).scalar_one_or_none()
         await self.session.flush()
 
-        # Fetch the record (either newly created or existing)
+        if inserted is not None:
+            return IdempotencyResult.NEW, inserted
+
+        # Conflict: fetch the existing record to classify it.
         result = await self.session.execute(
             select(IdempotencyRecord).where(
                 IdempotencyRecord.widget_id == widget_id,
@@ -57,13 +60,13 @@ class IdempotencyRepository:
         )
         record = result.scalar_one_or_none()
 
-        if record and record.request_fingerprint == request_fingerprint:
-            return IdempotencyResult.REPLAY, record  # Existing with same fingerprint (replay)
-        elif record:
-            return IdempotencyResult.CONFLICT, record  # Existing with different fingerprint (conflict)
-        else:
-            # This shouldn't happen with the above logic, but handle anyway
+        if record is None:
+            # The conflicting transaction rolled back between our insert and
+            # select; treat as a fresh claim so the caller proceeds.
             return IdempotencyResult.NEW, None
+        if record.request_fingerprint == request_fingerprint:
+            return IdempotencyResult.REPLAY, record
+        return IdempotencyResult.CONFLICT, record
 
     async def set_submission_id(
         self, record: IdempotencyRecord, submission_id: UUID

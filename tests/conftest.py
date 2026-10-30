@@ -34,6 +34,20 @@ def _truncate_test_tables(sync_conn):
 
 
 @pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Clear in-memory rate-limit state between tests.
+
+    The limiter is a process-wide singleton; without this, earlier tests'
+    requests would exhaust the budget of later tests sharing the same
+    client IP (\"testclient\" under the ASGI transport).
+    """
+    from app.core.rate_limit import rate_limit_manager
+
+    rate_limit_manager.reset()
+    yield
+
+
+@pytest.fixture(autouse=True)
 async def _clean_test_database():
     """Start each test from an empty database.
 

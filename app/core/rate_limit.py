@@ -9,22 +9,26 @@ running behind a single Uvicorn worker.
 """
 
 import time
-from collections import deque
+from collections import OrderedDict, deque
 
 
 class RateLimiter:
-    """Token-bucket style sliding-window rate limiter.
+    """Sliding-window rate limiter with bounded key storage.
 
     Args:
         max_requests: Maximum number of requests allowed in the window.
         window_seconds: Window size in seconds.
+        max_keys: Maximum distinct keys tracked at once; the least
+            recently used key is evicted beyond this bound so memory
+            cannot grow without limit under diverse client traffic.
     """
 
-    def __init__(self, max_requests: int, window_seconds: int):
+    def __init__(self, max_requests: int, window_seconds: int, max_keys: int = 10_000):
         self.max_requests = max_requests
         self.window_seconds = window_seconds
-        # key -> deque of request timestamps
-        self._windows: dict[str, deque[float]] = {}
+        self.max_keys = max_keys
+        # key -> deque of request timestamps; LRU order for bounded eviction
+        self._windows: OrderedDict[str, deque[float]] = OrderedDict()
 
     def is_allowed(self, key: str) -> tuple[bool, int]:
         """Check whether a request is allowed for the given key.
@@ -33,7 +37,14 @@ class RateLimiter:
             (allowed, retry_after_seconds)
         """
         now = time.monotonic()
-        window = self._windows.setdefault(key, deque())
+        window = self._windows.get(key)
+        if window is None:
+            window = deque()
+            self._windows[key] = window
+            if len(self._windows) > self.max_keys:
+                self._windows.popitem(last=False)
+        else:
+            self._windows.move_to_end(key)
 
         # Remove timestamps outside the window
         cutoff = now - self.window_seconds
@@ -47,6 +58,10 @@ class RateLimiter:
 
         window.append(now)
         return True, 0
+
+    def reset(self) -> None:
+        """Forget all tracked keys (used by tests)."""
+        self._windows.clear()
 
 
 class RateLimitManager:
@@ -63,6 +78,11 @@ class RateLimitManager:
         if key not in self._limiters:
             self._limiters[key] = RateLimiter(max_requests, window_seconds)
         return self._limiters[key]
+
+    def reset(self) -> None:
+        """Reset every managed limiter (used by tests)."""
+        for limiter in self._limiters.values():
+            limiter.reset()
 
 
 # Global manager instance (single-process deployment)

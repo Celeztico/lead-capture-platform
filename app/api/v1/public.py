@@ -11,6 +11,7 @@ from app.schemas import PublicWidgetConfig, SubmissionResponse
 from app.schemas.widget import WidgetConfiguration
 from app.services.submission import SubmissionService
 from app.services.submission_validation import (
+    MAX_BODY_BYTES,
     SubmissionValidationError,
     validate_body_size,
     validate_submission,
@@ -68,6 +69,9 @@ async def get_public_widget_config(
     return config
 
 
+MAX_IDEMPOTENCY_KEY_LENGTH = 255  # matches IdempotencyRecord.idempotency_key
+
+
 @router.post(
     "/public/v1/widgets/{public_id}/submissions",
     response_model=SubmissionResponse,
@@ -86,10 +90,42 @@ async def submit_lead(
     jobs. Optional geolocation, email, and webhook failures do not invalidate
     a committed submission.
     """
+    # --- Rate limiting: per IP -------------------------------------------
+    # Checked before any body read or parsing so oversized or malformed
+    # floods cannot bypass the limit.
+    # Proxy note: request.client is the TCP peer. Behind a reverse proxy
+    # that is the proxy address unless the ASGI server is configured with
+    # explicit trusted-proxy headers; forwarded client headers are not
+    # read here because trusting them blindly would allow spoofing.
+    client_ip = request.client.host if request.client else "unknown"
+    ip_allowed, ip_retry = check_rate_limit(
+        f"ip:{client_ip}",
+        settings.rate_limit_per_minute_ip,
+        60,
+    )
+    if not ip_allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Try again later.",
+            headers={"Retry-After": str(ip_retry)},
+        )
+
     # --- Request body size limit -----------------------------------------
-    body = await request.body()
+    # Reject on the declared Content-Length before reading, then bound the
+    # streamed read so chunked uploads cannot buffer unbounded data.
+    content_length = request.headers.get("content-length", "")
+    if content_length.isdigit() and int(content_length) > MAX_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Request body exceeds {MAX_BODY_BYTES // 1_000_000} MB limit.",
+        )
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_BODY_BYTES:
+            break
     try:
-        validate_body_size(body)
+        validate_body_size(bytes(body))
     except SubmissionValidationError as e:
         raise HTTPException(status_code=413, detail=e.message) from None
 
@@ -106,16 +142,14 @@ async def submit_lead(
     if not isinstance(data, dict):
         raise HTTPException(status_code=422, detail="Field 'data' must be a JSON object")
 
-    # --- Client IP for rate limiting --------------------------------------
-    client_ip = request.client.host if request.client else "unknown"
-
-    # --- Rate limiting: per IP -------------------------------------------
-    ip_allowed, ip_retry = check_rate_limit(f"ip:{client_ip}", 10, 60)
-    if not ip_allowed:
+    # --- Idempotency key --------------------------------------------------
+    idempotency_key = request.headers.get("Idempotency-Key")
+    if idempotency_key is not None and (
+        not idempotency_key or len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH
+    ):
         raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded. Try again later.",
-            headers={"Retry-After": str(ip_retry)},
+            status_code=400,
+            detail=f"Idempotency-Key must be 1-{MAX_IDEMPOTENCY_KEY_LENGTH} characters.",
         )
 
     # --- Resolve widget (active only) ------------------------------------
@@ -126,7 +160,9 @@ async def submit_lead(
 
     # --- Rate limiting: per widget ----------------------------------------
     widget_allowed, widget_retry = check_rate_limit(
-        f"widget:{widget.id}", 30, 60
+        f"widget:{widget.id}",
+        settings.rate_limit_per_minute_widget,
+        60,
     )
     if not widget_allowed:
         raise HTTPException(
@@ -146,13 +182,8 @@ async def submit_lead(
     try:
         validate_submission(data, widget_config, widget)
     except SubmissionValidationError as e:
-        raise HTTPException(
-            status_code=422,
-            detail=e.message,
-        ) from None
-
-    # --- Idempotency key --------------------------------------------------
-    idempotency_key = request.headers.get("Idempotency-Key")
+        error_status = 400 if e.code == "SPAM_DETECTED" else 422
+        raise HTTPException(status_code=error_status, detail=e.message) from None
 
     # --- Source origin ----------------------------------------------------
     source_origin = request.headers.get("origin")
@@ -171,6 +202,11 @@ async def submit_lead(
             raise HTTPException(
                 status_code=409,
                 detail="Idempotency key reused with different payload",
+            ) from None
+        if str(e) == "IDEMPOTENCY_IN_PROGRESS":
+            raise HTTPException(
+                status_code=409,
+                detail="Submission with this idempotency key is still in progress",
             ) from None
         raise HTTPException(status_code=400, detail=str(e)) from None
 

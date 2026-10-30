@@ -31,7 +31,6 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
                 "correlation_id": correlation_id,
                 "method": request.method,
                 "path": request.url.path,
-                "client_host": request.client.host if request.client else "unknown",
             },
         )
 
