@@ -4,8 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_workspace_id
+from app.core.config import get_settings
 from app.core.database import get_db
 from app.models import WidgetStatus
+
+settings = get_settings()
 from app.schemas import (
     EmbedResponse,
     WidgetCreate,
@@ -117,8 +120,8 @@ async def get_embed_snippet(
         raise HTTPException(status_code=404, detail="Widget not found")
 
     # Generate embed snippet
-    base_url = "http://localhost:8000"  # In production, this should come from config
-    script_url = f"{base_url}/widget/v1/widget.1.js"
+    base_url = settings.public_base_url_normalized
+    script_url = f"{base_url}/widget/v1/widget.js"
     snippet = (
         f'<div id="lead-capture-widget" data-widget-id="{widget.public_id}"></div>\n'
         f'<script src="{script_url}" defer></script>'
