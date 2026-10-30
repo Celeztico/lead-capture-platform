@@ -91,13 +91,13 @@ async def submit_lead(
     try:
         validate_body_size(body)
     except SubmissionValidationError as e:
-        raise HTTPException(status_code=413, detail=e.message)
+        raise HTTPException(status_code=413, detail=e.message) from None
 
     # --- Parse JSON -------------------------------------------------------
     try:
         payload = json.loads(body)
     except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Malformed JSON")
+        raise HTTPException(status_code=400, detail="Malformed JSON") from None
 
     if not isinstance(payload, dict):
         raise HTTPException(status_code=422, detail="Request body must be a JSON object")
@@ -120,7 +120,7 @@ async def submit_lead(
 
     # --- Resolve widget (active only) ------------------------------------
     widget_service = WidgetService(db)
-    widget = await widget_service.get_active_by_public_id(public_id)
+    widget = await widget_service.get_active_widget_by_public_id(public_id)
     if widget is None:
         raise HTTPException(status_code=404, detail="Widget not found or not active")
 
@@ -139,7 +139,7 @@ async def submit_lead(
     try:
         widget_config = WidgetConfiguration(**widget.configuration)
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid widget configuration")
+        raise HTTPException(status_code=422, detail="Invalid widget configuration") from None
 
     # --- Validate submission fields ---------------------------------------
     submission_service = SubmissionService(db)
@@ -149,7 +149,7 @@ async def submit_lead(
         raise HTTPException(
             status_code=422,
             detail=e.message,
-        )
+        ) from None
 
     # --- Idempotency key --------------------------------------------------
     idempotency_key = request.headers.get("Idempotency-Key")
@@ -171,8 +171,8 @@ async def submit_lead(
             raise HTTPException(
                 status_code=409,
                 detail="Idempotency key reused with different payload",
-            )
-        raise HTTPException(status_code=400, detail=str(e))
+            ) from None
+        raise HTTPException(status_code=400, detail=str(e)) from None
 
     # --- Return stable response -------------------------------------------
     return SubmissionResponse(

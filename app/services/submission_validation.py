@@ -99,29 +99,29 @@ def validate_submission(
             )
 
         # Type/length validation
-        field_config = next(f for f in config.fields if f.name == name)
+        next(f for f in config.fields if f.name == name)
 
-        if isinstance(value, str):
-            if len(value) > MAX_FIELD_LENGTH:
-                raise SubmissionValidationError(
-                    code="FIELD_TOO_LONG",
-                    message=f"Field '{name}' exceeds maximum length.",
-                    details=[
-                        {
-                            "field": name,
-                            "reason": f"Length {len(value)} exceeds limit {MAX_FIELD_LENGTH}.",
-                        }
-                    ],
-                )
+        if isinstance(value, str) and len(value) > MAX_FIELD_LENGTH:
+            raise SubmissionValidationError(
+                code="FIELD_TOO_LONG",
+                message=f"Field '{name}' exceeds maximum length.",
+                details=[
+                    {
+                        "field": name,
+                        "reason": f"Length {len(value)} exceeds limit {MAX_FIELD_LENGTH}.",
+                    }
+                ],
+            )
 
         # Required fields must be present and non-empty (for strings)
-        if name in required_fields:
-            if value is None or (isinstance(value, str) and value.strip() == ""):
-                raise SubmissionValidationError(
-                    code="MISSING_REQUIRED_FIELD",
-                    message=f"Required field '{name}' is missing or empty.",
-                    details=[{"field": name, "reason": "Required field is missing or empty."}],
-                )
+        if name in required_fields and (
+            value is None or (isinstance(value, str) and value.strip() == "")
+        ):
+            raise SubmissionValidationError(
+                code="MISSING_REQUIRED_FIELD",
+                message=f"Required field '{name}' is missing or empty.",
+                details=[{"field": name, "reason": "Required field is missing or empty."}],
+            )
 
 
 def validate_body_size(body_bytes: bytes, max_bytes: int = 1_000_000) -> None:

@@ -10,7 +10,6 @@ running behind a single Uvicorn worker.
 
 import time
 from collections import deque
-from typing import Deque
 
 
 class RateLimiter:
@@ -25,7 +24,7 @@ class RateLimiter:
         self.max_requests = max_requests
         self.window_seconds = window_seconds
         # key -> deque of request timestamps
-        self._windows: dict[str, Deque[float]] = {}
+        self._windows: dict[str, deque[float]] = {}
 
     def is_allowed(self, key: str) -> tuple[bool, int]:
         """Check whether a request is allowed for the given key.
