@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1 import public as public_router
@@ -9,9 +9,13 @@ from app.api.v1 import widgets as widgets_router
 from app.api.v1.health import router as health_router
 from app.core.config import get_settings
 from app.core.database import close_db, init_db
+from app.middleware.cache import CacheControlMiddleware
+from app.middleware.cors import PathScopedCORSMiddleware
 from app.middleware.logging import CorrelationIdMiddleware
 
 settings = get_settings()
+
+WIDGET_ASSETS_DIR = Path(__file__).resolve().parent / "static" / "widget" / "v1"
 
 
 @asynccontextmanager
@@ -32,11 +36,29 @@ def create_app() -> FastAPI:
 
     app.add_middleware(CorrelationIdMiddleware)
 
+    # Cache headers for versioned widget assets (paths are versioned, so a
+    # moderate lifetime with revalidation is safe).
+    app.add_middleware(
+        CacheControlMiddleware,
+        paths=("/widget",),
+        cache_control="public, max-age=3600, stale-while-revalidate=86400",
+    )
+
+    # Management API CORS (dashboard and other first-party web apps)
+    app.add_middleware(
+        PathScopedCORSMiddleware,
+        paths=("/api",),
+        allow_origins=settings.allowed_origins_list,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
+
     # CORS for public widget endpoints only (config + script delivery)
     widget_origins = settings.allowed_widget_origins_list
-
     app.add_middleware(
-        CORSMiddleware,
+        PathScopedCORSMiddleware,
+        paths=("/public", "/widget"),
         allow_origins=widget_origins if widget_origins else ["*"],
         allow_credentials=False,
         allow_methods=["GET", "OPTIONS"],
@@ -47,7 +69,7 @@ def create_app() -> FastAPI:
     # Serve versioned widget JavaScript assets
     app.mount(
         "/widget/v1",
-        StaticFiles(directory="app/static/widget/v1"),
+        StaticFiles(directory=str(WIDGET_ASSETS_DIR)),
         name="widget-assets",
     )
 

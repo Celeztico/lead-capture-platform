@@ -76,7 +76,8 @@ class TestStaticWidgetServing:
         """Test that the widget JavaScript file is served from /widget/v1/widget.js."""
         response = await client.get("/widget/v1/widget.js")
         assert response.status_code == 200
-        assert "application/javascript" in response.headers.get("content-type", "")
+        # text/javascript (RFC 9239) or application/javascript are both valid
+        assert "javascript" in response.headers.get("content-type", "")
         assert "Lead-Capture Platform" in response.text
         assert "data-widget-id" in response.text
 
@@ -87,6 +88,18 @@ class TestStaticWidgetServing:
         cache_control = response.headers.get("cache-control", "")
         assert "public" in cache_control
         assert "max-age" in cache_control
+
+    async def test_widget_js_conditional_request_304(self, client):
+        """Test that a second request with the static asset ETag returns 304."""
+        response1 = await client.get("/widget/v1/widget.js")
+        assert response1.status_code == 200
+        etag = response1.headers.get("etag")
+        assert etag is not None
+
+        response2 = await client.get(
+            "/widget/v1/widget.js", headers={"If-None-Match": etag}
+        )
+        assert response2.status_code == 304
 
     async def test_widget_js_not_found_for_v2(self, client):
         """Test that v2 path does not exist yet (future breaking changes)."""
@@ -145,6 +158,20 @@ class TestPublicConfigEndpoint:
         response2 = await client.get(
             f"/public/v1/widgets/{demo_widget.public_id}/config",
             headers={"If-None-Match": etag},
+        )
+        assert response2.status_code == 304
+        # RFC 9110: 304 responses should include the current ETag
+        assert response2.headers.get("etag") == etag
+        assert "max-age" in response2.headers.get("cache-control", "")
+
+    async def test_public_config_304_on_if_none_match_list(self, client, demo_widget):
+        """Test that If-None-Match with a list of ETags still matches weakly."""
+        response1 = await client.get(f"/public/v1/widgets/{demo_widget.public_id}/config")
+        etag = response1.headers.get("etag")
+
+        response2 = await client.get(
+            f"/public/v1/widgets/{demo_widget.public_id}/config",
+            headers={"If-None-Match": f'W/"other", {etag}'},
         )
         assert response2.status_code == 304
 
@@ -357,45 +384,116 @@ class TestCrossTenantPublicConfig:
 
 
 class TestCORSConfiguration:
-    """Test CORS behavior for public widget endpoints."""
+    """Test CORS behavior for public widget endpoints.
+
+    .env.test allows http://localhost:3000 (and 127.0.0.1) as widget origins.
+    """
+
+    ALLOWED = "http://localhost:3000"
+    DISALLOWED = "http://evil.example.com"
 
     async def test_public_config_cors_headers(self, client, demo_widget):
-        """Test that public config endpoint returns CORS headers."""
+        """Test that an allowed origin gets CORS headers on public config."""
         response = await client.get(
             f"/public/v1/widgets/{demo_widget.public_id}/config",
-            headers={"Origin": "http://example.com"},
+            headers={"Origin": self.ALLOWED},
         )
         assert response.status_code == 200
-        # CORS headers should be present
-        assert "access-control-allow-origin" in response.headers
+        assert response.headers.get("access-control-allow-origin") == self.ALLOWED
+
+    async def test_public_config_no_cors_for_disallowed_origin(self, client, demo_widget):
+        """Test that a disallowed origin gets no CORS headers on public config."""
+        response = await client.get(
+            f"/public/v1/widgets/{demo_widget.public_id}/config",
+            headers={"Origin": self.DISALLOWED},
+        )
+        assert response.status_code == 200
+        assert "access-control-allow-origin" not in response.headers
 
     async def test_widget_js_cors_headers(self, client):
-        """Test that widget JS asset returns CORS headers."""
+        """Test that widget JS asset returns CORS headers for an allowed origin."""
         response = await client.get(
             "/widget/v1/widget.js",
-            headers={"Origin": "http://example.com"},
+            headers={"Origin": self.ALLOWED},
         )
         assert response.status_code == 200
-        assert "access-control-allow-origin" in response.headers
+        assert response.headers.get("access-control-allow-origin") == self.ALLOWED
 
     async def test_options_preflight_for_public_config(self, client, demo_widget):
         """Test CORS preflight OPTIONS request for public config endpoint."""
         response = await client.options(
             f"/public/v1/widgets/{demo_widget.public_id}/config",
             headers={
-                "Origin": "http://example.com",
+                "Origin": self.ALLOWED,
                 "Access-Control-Request-Method": "GET",
             },
         )
         assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == self.ALLOWED
 
     async def test_options_preflight_for_widget_js(self, client):
         """Test CORS preflight OPTIONS request for widget JS asset."""
         response = await client.options(
             "/widget/v1/widget.js",
             headers={
-                "Origin": "http://example.com",
+                "Origin": self.ALLOWED,
                 "Access-Control-Request-Method": "GET",
             },
         )
         assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == self.ALLOWED
+
+    async def test_options_preflight_disallowed_origin_rejected(self, client, demo_widget):
+        """Test that preflight from a disallowed origin is rejected."""
+        response = await client.options(
+            f"/public/v1/widgets/{demo_widget.public_id}/config",
+            headers={
+                "Origin": self.DISALLOWED,
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert response.status_code == 400
+
+    async def test_management_api_cors_preflight_allows_post(self, client):
+        """Test that management API preflight allows POST from an allowed origin.
+
+        Regression: a single global GET/OPTIONS CORS middleware broke
+        management API browser access (ALLOWED_ORIGINS).
+        """
+        response = await client.options(
+            "/api/v1/widgets",
+            headers={
+                "Origin": self.ALLOWED,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers.get("access-control-allow-origin") == self.ALLOWED
+        allow_methods = response.headers.get("access-control-allow-methods", "")
+        assert "POST" in allow_methods
+
+    async def test_management_api_cors_preflight_disallowed_origin_rejected(self, client):
+        """Test that management API preflight rejects a disallowed origin."""
+        response = await client.options(
+            "/api/v1/widgets",
+            headers={
+                "Origin": self.DISALLOWED,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert response.status_code == 400
+
+    async def test_public_endpoint_preflight_rejects_post(self, client, demo_widget):
+        """Test that the public widget CORS policy does not allow POST.
+
+        Submissions (Phase 5) must not be enabled for arbitrary methods by
+        the config/script delivery CORS policy.
+        """
+        response = await client.options(
+            f"/public/v1/widgets/{demo_widget.public_id}/config",
+            headers={
+                "Origin": self.ALLOWED,
+                "Access-Control-Request-Method": "POST",
+            },
+        )
+        assert response.status_code == 400

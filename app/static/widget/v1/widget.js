@@ -15,7 +15,6 @@
   "use strict";
 
   var SELECTOR = '[data-widget-id]';
-  var API_BASE = null; // Set at runtime from data-api-base or default origin
   var INITIALIZED = new WeakSet();
 
   // --- Helpers ------------------------------------------------------------
@@ -27,10 +26,30 @@
     return "";
   }
 
+  function getScriptOrigin() {
+    // Resolve the API origin from where this script was loaded from, so the
+    // widget works when embedded on a different origin than the API.
+    // document.currentScript is available while this deferred bundle executes.
+    try {
+      var script = document.currentScript;
+      if (script && script.src) {
+        var anchor = document.createElement("a");
+        anchor.href = script.src;
+        return anchor.origin || anchor.protocol + "//" + anchor.host;
+      }
+    } catch (e) {
+      // fall through to page origin
+    }
+    return null;
+  }
+
   function createElement(tag, attrs, children) {
     var el = document.createElement(tag);
     if (attrs) {
       Object.keys(attrs).forEach(function (key) {
+        if (attrs[key] === null || attrs[key] === undefined) {
+          return;
+        }
         el.setAttribute(key, attrs[key]);
       });
     }
@@ -67,7 +86,7 @@
 
   // --- Rendering ----------------------------------------------------------
 
-  function renderForm(container, config) {
+  function renderForm(container, config, apiBase) {
     var cfg = config.configuration || {};
     var fields = cfg.fields || [];
 
@@ -215,7 +234,6 @@
       submitBtn.textContent = "Sending...";
       submitBtn.disabled = true;
 
-      var apiBase = API_BASE || getOrigin();
       var submitUrl = apiBase + "/public/v1/widgets/" + config.public_widget_id + "/submissions";
 
       fetchJson(submitUrl, {
@@ -253,17 +271,16 @@
     INITIALIZED.add(container);
 
     var publicId = container.getAttribute("data-widget-id");
-    var apiBaseAttr = container.getAttribute("data-api-base");
-    if (apiBaseAttr) {
-      API_BASE = apiBaseAttr.replace(/\/$/, "");
-    }
 
     if (!publicId) {
       console.error("Lead Capture Widget: missing data-widget-id attribute");
       return;
     }
 
-    var apiBase = API_BASE || getOrigin();
+    // API base resolution: explicit data-api-base > script src origin > page origin
+    var apiBaseAttr = container.getAttribute("data-api-base");
+    var apiBase =
+      (apiBaseAttr && apiBaseAttr.replace(/\/$/, "")) || getScriptOrigin() || getOrigin();
     var configUrl = apiBase + "/public/v1/widgets/" + publicId + "/config";
 
     fetchJson(configUrl, {
@@ -279,7 +296,7 @@
           );
           return;
         }
-        renderForm(container, config);
+        renderForm(container, config, apiBase);
       })
       .catch(function (err) {
         console.error("Lead Capture Widget: failed to load config for " + publicId, err);

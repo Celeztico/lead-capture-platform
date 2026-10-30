@@ -26,7 +26,8 @@ def _truncate_test_tables(sync_conn):
     rows = sync_conn.execute(
         text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
     )
-    tables = [row[0] for row in rows]
+    # alembic_version is migration state, not test data - keep it intact.
+    tables = [row[0] for row in rows if row[0] != "alembic_version"]
     if tables:
         names = ", ".join(f'"{t}"' for t in tables)
         sync_conn.execute(text(f"TRUNCATE TABLE {names} RESTART IDENTITY CASCADE"))
