@@ -5,11 +5,11 @@ retry behavior using unittest.mock.patch for injectable failures.
 """
 
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
-from uuid import uuid4
 
 from app.core.security import create_access_token
 from app.main import create_app
@@ -126,7 +126,6 @@ class TestGeoProviderFallback:
             "app.services.outbox.enrich_submission",
             new=AsyncMock(return_value=geo_result),
         ) as mock_enrich:
-            # Get the submission to find workspace_id
             from app.core.database import async_session_maker
 
             async with async_session_maker() as session:
@@ -137,21 +136,24 @@ class TestGeoProviderFallback:
                 )
                 submission = result.scalar_one()
                 workspace_id = submission.workspace_id
+                captured_ip = submission.client_ip
 
-            processor = OutboxProcessor(session)
-            # Create a fake job
-            from app.models import OutboxEvent
+                processor = OutboxProcessor(session)
+                from app.models import OutboxEvent
 
-            job = OutboxEvent(
-                workspace_id=workspace_id,
-                submission_id=submission_id,
-                event_type="submission.geolocate",
-                payload={"submission_id": str(submission_id)},
-            )
+                job = OutboxEvent(
+                    workspace_id=workspace_id,
+                    submission_id=submission_id,
+                    event_type="submission.geolocate",
+                    payload={"submission_id": str(submission_id)},
+                )
 
-            success = await processor.process_job(job)
-            assert success is True
-            mock_enrich.assert_called_once()
+                success = await processor.process_job(job)
+                await session.commit()
+                assert success is True
+                mock_enrich.assert_called_once()
+                # Enrichment must use the client IP captured at submission time
+                assert mock_enrich.call_args.args[0] == captured_ip
 
             # Verify enrichment stored
             async with async_session_maker() as session2:
@@ -222,6 +224,7 @@ class TestGeoProviderFallback:
                 )
 
                 success = await processor.process_job(job)
+                await session.commit()
                 assert success is True
 
             # Verify enrichment stored with provider B's result
@@ -282,6 +285,7 @@ class TestGeoProviderFallback:
                 )
 
                 success = await processor.process_job(job)
+                await session.commit()
                 assert success is True  # Job succeeds even without enrichment
 
             # Verify submission exists without enrichment
@@ -608,6 +612,7 @@ class TestSubmissionReliability:
                         assert success is True
                     else:
                         assert success is False
+                await session.commit()
 
             # Verify submission still exists with all data intact
             async with async_session_maker() as session2:

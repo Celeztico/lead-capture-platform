@@ -38,11 +38,12 @@ class OutboxRepository:
         self, worker_id: str, limit: int = 10
     ) -> Sequence[OutboxEvent]:
         now = datetime.now(UTC)
-        # Atomically claim jobs
+        # Atomically claim due jobs. RETRYING jobs whose backoff has
+        # elapsed must be claimable, otherwise retries never run.
         result = await self.session.execute(
             select(OutboxEvent)
             .where(
-                OutboxEvent.status == JobStatus.PENDING,
+                OutboxEvent.status.in_([JobStatus.PENDING, JobStatus.RETRYING]),
                 OutboxEvent.available_at <= now,
             )
             .order_by(OutboxEvent.available_at)
@@ -77,9 +78,11 @@ class OutboxRepository:
         if retry and job.attempt_count < job.max_attempts:
             # Exponential backoff: 5s, 15s, 45s, 2min, 5min
             backoff_seconds = [5, 15, 45, 120, 300]
-            delay = backoff_seconds[min(job.attempt_count, len(backoff_seconds) - 1)]
+            delay = backoff_seconds[min(job.attempt_count - 1, len(backoff_seconds) - 1)]
             job.status = JobStatus.RETRYING
             job.available_at = now + timedelta(seconds=delay)
+            job.locked_at = None
+            job.locked_by = None
         else:
             job.status = JobStatus.DEAD_LETTER
             job.locked_at = None
