@@ -85,6 +85,7 @@ class SubmissionService:
             widget_id=widget.id,
             data=data,
             source_origin=source_origin,
+            client_ip=client_ip,
         )
 
         # Store idempotency record link

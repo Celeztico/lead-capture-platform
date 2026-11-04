@@ -19,12 +19,14 @@ class SubmissionRepository:
         widget_id: UUID,
         data: dict,
         source_origin: str | None = None,
+        client_ip: str | None = None,
     ) -> Submission:
         submission = Submission(
             workspace_id=workspace_id,
             widget_id=widget_id,
             data=data,
             source_origin=source_origin,
+            client_ip=client_ip,
         )
         self.session.add(submission)
         await self.session.flush()
@@ -133,6 +135,7 @@ class SubmissionRepository:
         latitude: float | None = None,
         longitude: float | None = None,
         enrichment_status: str | None = None,
+        notification_status: str | None = None,
     ) -> Submission | None:
         submission = await self.get_by_id(submission_id, UUID("00000000-0000-0000-0000-000000000000"))
         if not submission:
@@ -156,5 +159,7 @@ class SubmissionRepository:
                 submission.longitude = longitude
             if enrichment_status is not None:
                 submission.enrichment_status = enrichment_status
+            if notification_status is not None:
+                submission.notification_status = notification_status
             await self.session.flush()
         return submission

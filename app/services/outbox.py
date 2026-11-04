@@ -5,17 +5,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import OutboxEvent
 from app.repositories import OutboxRepository
-from app.services.geo import enrich_submission
+from app.services.geo import GeoProvider, enrich_submission
+from app.services.notifications import deliver_webhook, send_email_notification
 from app.services.submission import SubmissionService
 
 logger = logging.getLogger(__name__)
 
 
 class OutboxProcessor:
-    def __init__(self, session: AsyncSession):
+    def __init__(
+        self,
+        session: AsyncSession,
+        provider_a: GeoProvider | None = None,
+        provider_b: GeoProvider | None = None,
+    ):
         self.outbox_repo = OutboxRepository(session)
         self.submission_service = SubmissionService(session)
         self.session = session
+        self.provider_a = provider_a
+        self.provider_b = provider_b
 
     async def process_job(self, job: OutboxEvent) -> bool:
         """Process a single outbox job. Returns True if succeeded, False if failed."""
@@ -56,10 +64,13 @@ class OutboxProcessor:
             )
             return False
 
-        # For demo, use a test IP. In production, extract from submission.source_origin
-        # or store IP separately. Using a known test IP.
-        test_ip = "8.8.8.8"  # Google DNS - test IP
-        result = await enrich_submission(test_ip)
+        # Use the client IP captured at submission time for geolocation.
+        client_ip = submission.client_ip or ""
+        result = await enrich_submission(
+            client_ip,
+            provider_a=self.provider_a,
+            provider_b=self.provider_b,
+        )
 
         if result:
             await self.submission_service.submission_repo.update_enrichment(
@@ -88,17 +99,86 @@ class OutboxProcessor:
         return True
 
     async def _process_notification(self, job: OutboxEvent) -> bool:
-        # Stub - would send email to workspace owner
-        logger.info(
-            "Notification job processed (stub)",
-            extra={"job_id": str(job.id)},
+        """Send email notification for a new submission."""
+        submission_id = UUID(job.payload["submission_id"])
+        workspace_id = job.workspace_id
+        if workspace_id is None:
+            logger.warning(
+                "Job missing workspace_id", extra={"job_id": str(job.id)}
+            )
+            return False
+        submission = await self.submission_service.get_submission(
+            submission_id, workspace_id
         )
-        return True
+        if not submission:
+            logger.warning(
+                "Submission not found for notification",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+            return False
+
+        # Stub implementation — logs only. In production, this would call
+        # an SMTP provider. The function is injected via unittest.mock.patch
+        # in tests to simulate delivery failures deterministically.
+        success = await send_email_notification(
+            submission_id=submission_id,
+            workspace_id=workspace_id,
+            to_email="owner@example.com",  # Would come from workspace config
+            subject="New lead submission",
+            body=f"A new lead was submitted via widget {submission.widget_id}.",
+        )
+        if success:
+            await self.submission_service.submission_repo.update_enrichment(
+                submission_id=submission_id,
+                notification_status="sent",
+            )
+            logger.info(
+                "Notification job processed",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+        else:
+            logger.warning(
+                "Notification job failed",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+        return success
 
     async def _process_webhook(self, job: OutboxEvent) -> bool:
-        # Stub - would deliver webhook
-        logger.info(
-            "Webhook job processed (stub)",
-            extra={"job_id": str(job.id)},
+        """Deliver webhook for a new submission."""
+        submission_id = UUID(job.payload["submission_id"])
+        workspace_id = job.workspace_id
+        if workspace_id is None:
+            logger.warning(
+                "Job missing workspace_id", extra={"job_id": str(job.id)}
+            )
+            return False
+        submission = await self.submission_service.get_submission(
+            submission_id, workspace_id
         )
-        return True
+        if not submission:
+            logger.warning(
+                "Submission not found for webhook",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+            return False
+
+        # Stub implementation — logs only. In production, this would POST
+        # to the configured webhook URL with HMAC signature. Injected via
+        # unittest.mock.patch in tests to simulate delivery failures.
+        success = await deliver_webhook(
+            submission_id=submission_id,
+            workspace_id=workspace_id,
+            url="https://example.com/webhook",  # Would come from workspace config
+            payload={"submission_id": str(submission_id)},
+        )
+        if success:
+            logger.info(
+                "Webhook job processed",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+        else:
+            logger.warning(
+                "Webhook job failed",
+                extra={"job_id": str(job.id), "submission_id": str(submission_id)},
+            )
+        return success

@@ -226,6 +226,7 @@ class Submission(Base):
         DateTime(timezone=True), default=lambda: datetime.now(UTC), nullable=False
     )
     source_origin: Mapped[str | None] = mapped_column(Text, nullable=True)
+    client_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
     country_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     country_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     region: Mapped[str | None] = mapped_column(String(120), nullable=True)

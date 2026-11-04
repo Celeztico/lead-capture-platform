@@ -5,6 +5,7 @@ import uuid
 
 from app.core.database import async_session_maker
 from app.repositories import OutboxRepository
+from app.services.geo import IpapiProvider, IpinfoProvider
 from app.services.outbox import OutboxProcessor
 
 logging.basicConfig(
@@ -47,7 +48,11 @@ class Worker:
     async def _process_batch(self):
         async with async_session_maker() as session:
             outbox_repo = OutboxRepository(session)
-            processor = OutboxProcessor(session)
+            processor = OutboxProcessor(
+                session,
+                provider_a=IpapiProvider(),
+                provider_b=IpinfoProvider(),
+            )
 
             # Release stale locks first
             released = await outbox_repo.release_stale_locks()
